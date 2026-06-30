@@ -1,0 +1,46 @@
+name: Track T786 Bus
+
+on:
+  schedule:
+    # GitHub Actions cron is UTC. Malaysia is UTC+8.
+    # We want to poll every 2 minutes from 06:00 to 23:30 MYT daily.
+    # 06:00 MYT = 22:00 UTC (previous day)
+    # 23:30 MYT = 15:30 UTC
+    # GitHub cron only supports 5-minute minimum granularity reliably for */N,
+    # so we use */2 minutes across two UTC windows that together cover
+    # 22:00 UTC -> 23:59 UTC and 00:00 UTC -> 15:30 UTC.
+    - cron: '*/2 22-23 * * *'
+    - cron: '*/2 0-14 * * *'
+    - cron: '*/2 15 * * *'
+  workflow_dispatch: {}  # lets you manually trigger a run from the Actions tab to test
+
+permissions:
+  contents: write
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Poll T786 feed and append to history
+        run: python scripts/track_t786.py
+
+      - name: Commit and push updated data
+        run: |
+          git config user.name "t786-tracker-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/t786_history.csv
+          git diff --staged --quiet || git commit -m "Log T786 observation $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          git push
